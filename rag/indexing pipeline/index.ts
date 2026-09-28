@@ -2,20 +2,26 @@ import dotenv from "dotenv";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { QdrantVectorStore } from "@langchain/qdrant";
+import { QdrantVectorStore, type QdrantLibArgs } from "@langchain/qdrant";
 import { fileURLToPath } from "node:url";
 
 dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 
-const openAIKey = process.env.OPENAI_API_KEY;
-const qdrantUrl = process.env.QDRANT_URL;
+function requireEnv(name: "OPENAI_API_KEY" | "QDRANT_URL"): string {
+  const value = process.env[name]?.trim();
 
-if (!openAIKey) {
-  throw new Error("Missing OPENAI_API_KEY in the repository-root .env file.");
+  if (!value) {
+    throw new Error(`Missing ${name} in the repository-root .env file.`);
+  }
+
+  return value;
 }
 
-if (!qdrantUrl) {
-  throw new Error("Missing QDRANT_URL in the repository-root .env file.");
+const openAIKey = requireEnv("OPENAI_API_KEY");
+const qdrantUrl = new URL(requireEnv("QDRANT_URL"));
+
+if (qdrantUrl.protocol !== "http:" && qdrantUrl.protocol !== "https:") {
+  throw new Error("QDRANT_URL must use the http or https protocol.");
 }
 
 const pdfPath = fileURLToPath(new URL("../The Bhagavad Gita.pdf", import.meta.url));
@@ -32,14 +38,22 @@ const splitter = new RecursiveCharacterTextSplitter({
 });
 const chunks = await splitter.splitDocuments(docs);
 
+if (chunks.length === 0) {
+  throw new Error("No text chunks were created from the PDF.");
+}
+
 const embeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-large",
+  apiKey: openAIKey,
 });
 // todo: add metadata like page number, page count, etc.
-await QdrantVectorStore.fromDocuments(chunks, embeddings, {
-  url: qdrantUrl,
+const qdrantConfig = {
+  url: qdrantUrl.href,
   collectionName: "the-bhagavad-geeta",
+} satisfies QdrantLibArgs;
 
+await QdrantVectorStore.fromDocuments(chunks, embeddings, {
+  ...qdrantConfig,
 });
 
 console.log({ documentsLoaded: docs.length, chunksIndexed: chunks.length });
