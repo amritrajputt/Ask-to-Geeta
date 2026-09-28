@@ -2,6 +2,7 @@
   "name": "@the-bhagavad-geeta/rag",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "index": "tsx \"indexing pipeline/index.ts\""
   },
