@@ -1,0 +1,6 @@
+packages:
+  - RAG
+
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
