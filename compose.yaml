@@ -1,0 +1,12 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6335:6333"
+      - "127.0.0.1:6336:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+volumes:
+  qdrant_storage:
