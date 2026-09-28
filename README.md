@@ -7,33 +7,14 @@ Bhagavad Gita AI is an early-stage project for exploring questions about the Bha
 This repository is a foundation, not a completed chat product:
 
 - The Next.js application is scaffolded; its home page is currently a work-in-progress placeholder.
-- The RAG workspace contains a PDF ingestion prototype that loads the source PDF, splits it into chunks, creates OpenAI embeddings, and writes them to Qdrant.
+- The RAG component contains a source-ingestion prototype that splits content into chunks, creates OpenAI embeddings, and writes them to Qdrant.
 - Search, answer generation, citations, evidence checks, authentication, conversation history, and voice interaction are not implemented yet.
 
-The product and technical roadmap is documented in the PDFs under `rag/`:
-
-- `01_Gita_AI_Architecture_and_Design_Choices (1).pdf`
-- `02_Gita_AI_Requirements_and_Phases.pdf`
-- `03_Gita_AI_PRD.pdf`
-
-For the current RAG code, configuration, and indexing command, see [rag/README.md](rag/README.md).
+The product and technical roadmap covers system architecture, product requirements, and implementation phases. For current ingestion configuration and commands, see the [RAG setup guide](rag/README.md).
 
 ## Architecture
 
-The repository is a pnpm workspace. The root package is the Next.js application; `rag/` is a separate workspace package.
-
-```text
-.
-├── app/                  # Next.js app router and UI
-├── rag/
-│   ├── indexing pipeline/ # PDF ingestion, chunking, embeddings, Qdrant write
-│   ├── retrieval pipeline/ # Planned retrieval implementation
-│   └── ...                # Source PDF and planning documents
-├── compose.yaml           # Local Qdrant service
-├── package.json           # Next.js app and workspace-root scripts
-├── pnpm-workspace.yaml
-└── pnpm-lock.yaml         # Shared dependency lockfile
-```
+The project combines a Next.js web application with a TypeScript RAG component in a pnpm workspace.
 
 The planned system is source-grounded RAG: normalize a question, retrieve relevant approved source material, rank and check the evidence, then respond with citations or abstain when evidence is insufficient. Hybrid retrieval, reranking, answer generation, and citation validation remain roadmap items.
 
@@ -43,7 +24,7 @@ The solid path is implemented by the indexing prototype. The dashed path is the 
 
 ```mermaid
 flowchart LR
-	PDF["Bhagavad Gita PDF"] --> Loader["LangChain PDFLoader"]
+	Source["Approved source corpus"] --> Loader["LangChain document loader"]
 	Loader --> Splitter["Text splitter<br/>1,000 characters / 150 overlap"]
 	Splitter --> Embed["OpenAI embeddings<br/>text-embedding-3-large"]
 	Embed --> Qdrant["Qdrant collection"]
@@ -53,7 +34,7 @@ flowchart LR
 	Retrieval -. planned .-> Qdrant
 ```
 
-Today, indexing loads page-level PDF documents, splits them into chunks while retaining page metadata, creates embeddings, and writes the chunks to Qdrant. The planned query flow will normalize questions, retrieve approved source material, check evidence, and answer with citations or abstain when evidence is insufficient. The current corpus is not yet normalized into stable chapter-and-verse records.
+Today, indexing loads source documents, splits them into chunks while retaining source metadata, creates embeddings, and writes the chunks to Qdrant. The planned query flow will normalize questions, retrieve approved source material, check evidence, and answer with citations or abstain when evidence is insufficient. The current corpus is not yet normalized into stable chapter-and-verse records.
 
 ### Technology Stack
 
@@ -61,7 +42,7 @@ Today, indexing loads page-level PDF documents, splits them into chunks while re
 
 - Next.js 16, React 19, and TypeScript for the web application.
 - pnpm 10 workspace for the root app and the `@the-bhagavad-geeta/rag` package.
-- LangChain.js for PDF loading, text splitting, embeddings, and Qdrant integration.
+- LangChain.js for document loading, text splitting, embeddings, and Qdrant integration.
 - OpenAI `text-embedding-3-large` for embeddings.
 - Qdrant in Docker Compose for vector storage; REST is exposed on `127.0.0.1:6335` and gRPC on `127.0.0.1:6336`.
 - `dotenv` for loading root-level local configuration.
@@ -79,7 +60,7 @@ Today, indexing loads page-level PDF documents, splits them into chunks while re
 - Node.js
 - pnpm 10.33.0
 - Docker with Docker Compose for local Qdrant
-- An OpenAI API key to run PDF indexing
+- An OpenAI API key to run corpus indexing
 
 ## Run the Web App
 
@@ -121,6 +102,6 @@ The Compose service exposes Qdrant REST at `127.0.0.1:6335` and gRPC at `127.0.0
 
 - Ground Gita-specific claims in approved source material; do not invent scripture or citations.
 - Keep canonical text, translations, commentaries, and AI interpretation separate and attributable.
-- Use verse-level provenance in the production corpus; the current PDF prototype has not reached that level of normalization.
+- Use verse-level provenance in the production corpus; the current ingestion prototype has not reached that level of normalization.
 - Present the assistant as an AI guide, not as Krishna or an impersonation of a performer.
 - Treat voice as a later interface to the same grounded pipeline, using licensed or consented voices.
