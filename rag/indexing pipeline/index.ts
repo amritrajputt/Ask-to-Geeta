@@ -5,38 +5,37 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { QdrantVectorStore, type QdrantLibArgs } from "@langchain/qdrant";
 import { fileURLToPath } from "node:url";
 
-dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
+const rootEnvPath = fileURLToPath(new URL("../../.env", import.meta.url));
+dotenv.config({ path: rootEnvPath });
 
-function requireEnv(name: "OPENAI_API_KEY" | "QDRANT_URL"): string {
-  const value = process.env[name]?.trim();
+const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
+const qdrantUrlValue = process.env.QDRANT_URL?.trim();
+const qdrantApiKey = process.env.QDRANT_API_KEY?.trim();
 
-  if (!value) {
-    throw new Error(`Missing ${name} in the repository-root .env file.`);
-  }
-
-  return value;
+if (!openAiApiKey) {
+  throw new Error("OPENAI_API_KEY is missing from the repository-root .env file.");
 }
 
-const openAIKey = requireEnv("OPENAI_API_KEY");
-const qdrantUrl = new URL(requireEnv("QDRANT_URL"));
+if (!qdrantUrlValue) {
+  throw new Error("QDRANT_URL is missing from the repository-root .env file.");
+}
+
+const qdrantUrl = new URL(qdrantUrlValue);
 
 if (qdrantUrl.protocol !== "http:" && qdrantUrl.protocol !== "https:") {
-  throw new Error("QDRANT_URL must use the http or https protocol.");
+  throw new Error("QDRANT_URL must use http:// or https:// because Qdrant uses its REST API.");
 }
 
 const pdfPath = fileURLToPath(new URL("../The Bhagavad Gita.pdf", import.meta.url));
-const loader = new PDFLoader(pdfPath);
-const docs = await loader.load();
+const pages = await new PDFLoader(pdfPath).load();
 
-if (docs.length === 0) {
-  throw new Error(`No pages were extracted from ${pdfPath}.`);
-}
+
 
 const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: 1000,
   chunkOverlap: 150,
 });
-const chunks = await splitter.splitDocuments(docs);
+const chunks = await splitter.splitDocuments(pages);
 
 if (chunks.length === 0) {
   throw new Error("No text chunks were created from the PDF.");
@@ -44,37 +43,61 @@ if (chunks.length === 0) {
 
 const embeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-large",
-  apiKey: openAIKey,
+  apiKey: openAiApiKey,
 });
 const sourceUrl = "/sources/the-bhagavad-gita.pdf";
 
 for (const chunk of chunks) {
   const pageNumber = chunk.metadata.loc?.pageNumber;
-  console.log({ pageNumber });
+
   if (typeof pageNumber !== "number") {
     throw new Error("A chunk is missing its source PDF page number.");
   }
 
-  Object.assign(chunk.metadata, {
+  chunk.metadata = {
+    ...chunk.metadata,
     sourceId: "bhagavad-gita-pdf",
     sourceTitle: "The Bhagavad Gita",
     sourceType: "pdf",
     sourceUrl: `${sourceUrl}#page=${pageNumber}`,
     pageNumber,
-    pageCount: docs.length,
-  });
+    pageCount: pages.length,
+  };
 }
 
 const qdrantConfig = {
   url: qdrantUrl.href,
   collectionName: "the-bhagavad-geeta",
+  ...(qdrantApiKey ? { apiKey: qdrantApiKey } : {}),
 } satisfies QdrantLibArgs;
 
 const vectorStore = new QdrantVectorStore(embeddings, qdrantConfig);
-const batchSize = 100;
+const chunkBatchSize = 100;
+await vectorStore.ensureCollection();
 
-for (let startIndex = 0; startIndex < chunks.length; startIndex += batchSize) {
-  await vectorStore.addDocuments(chunks.slice(startIndex, startIndex + batchSize));
+const { count: storedChunkCount } = await vectorStore.client.count(
+  qdrantConfig.collectionName,
+  { exact: true },
+);
+
+if (storedChunkCount === chunks.length) {
+  console.log({
+    pagesLoaded: pages.length,
+    chunksIndexed: storedChunkCount,
+    embeddingsSkipped: true,
+  });
+} else {
+  if (storedChunkCount !== 0) {
+    throw new Error(
+      `The Qdrant collection contains ${storedChunkCount} chunks, but this PDF produces ${chunks.length}. ` +
+        "Clear the collection before indexing again to avoid duplicate or incomplete data.",
+    );
+  }
+
+  for (let startIndex = 0; startIndex < chunks.length; startIndex += chunkBatchSize) {
+    const chunkBatch = chunks.slice(startIndex, startIndex + chunkBatchSize);
+    await vectorStore.addDocuments(chunkBatch);
+  }
+
+  console.log({ pagesLoaded: pages.length, chunksIndexed: chunks.length });
 }
-
-console.log({ documentsLoaded: docs.length, chunksIndexed: chunks.length });
