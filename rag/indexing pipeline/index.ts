@@ -46,14 +46,35 @@ const embeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-large",
   apiKey: openAIKey,
 });
-// todo: add metadata like page number, page count, etc.
+const sourceUrl = "/sources/the-bhagavad-gita.pdf";
+
+for (const chunk of chunks) {
+  const pageNumber = chunk.metadata.loc?.pageNumber;
+  console.log({ pageNumber });
+  if (typeof pageNumber !== "number") {
+    throw new Error("A chunk is missing its source PDF page number.");
+  }
+
+  Object.assign(chunk.metadata, {
+    sourceId: "bhagavad-gita-pdf",
+    sourceTitle: "The Bhagavad Gita",
+    sourceType: "pdf",
+    sourceUrl: `${sourceUrl}#page=${pageNumber}`,
+    pageNumber,
+    pageCount: docs.length,
+  });
+}
+
 const qdrantConfig = {
   url: qdrantUrl.href,
   collectionName: "the-bhagavad-geeta",
 } satisfies QdrantLibArgs;
 
-await QdrantVectorStore.fromDocuments(chunks, embeddings, {
-  ...qdrantConfig,
-});
+const vectorStore = new QdrantVectorStore(embeddings, qdrantConfig);
+const batchSize = 100;
+
+for (let startIndex = 0; startIndex < chunks.length; startIndex += batchSize) {
+  await vectorStore.addDocuments(chunks.slice(startIndex, startIndex + batchSize));
+}
 
 console.log({ documentsLoaded: docs.length, chunksIndexed: chunks.length });
